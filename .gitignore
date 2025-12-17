@@ -1,6 +1,15 @@
-venv/
+# Python
 __pycache__/
-._*
-*.pkl
+*.pyc
+*.pyo
+
+# Virtual environment
+venv/
+
+# Data besar / hasil proses
 data/raw/
 data/processed/
+
+# OS junk
+.DS_Store
+._*
