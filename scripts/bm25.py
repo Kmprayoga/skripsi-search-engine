@@ -1,31 +1,38 @@
+import json
 import math
-from collections import defaultdict
+from pathlib import Path
 
-class BM25:
-    def __init__(self, index, doc_len, num_docs, k1=1.5, b=0.75):
-        self.index = index
-        self.doc_len = doc_len
-        self.num_docs = num_docs
-        self.avgdl = sum(doc_len.values()) / num_docs
-        self.k1 = k1
-        self.b = b
+BASE_DIR = Path(__file__).resolve().parent.parent
+INDEX_PATH = BASE_DIR / "data/processed/index.json"
 
-    def idf(self, term):
-        df = len(self.index.get(term, {}))
-        if df == 0:
-            return 0
-        return math.log((self.num_docs - df + 0.5) / (df + 0.5) + 1)
+K1 = 1.5
+B = 0.75
 
-    def rank(self, query_tokens):
-        scores = defaultdict(float)
+def bm25_score(query, index, doc_len):
+    scores = {}
+    N = len(doc_len)
+    avgdl = sum(doc_len.values()) / N
 
-        for term in query_tokens:
-            postings = self.index.get(term, {})
-            idf = self.idf(term)
+    for term in query.split():
+        if term not in index:
+            continue
 
-            for doc_id, tf in postings.items():
-                dl = self.doc_len[doc_id]
-                denom = tf + self.k1 * (1 - self.b + self.b * dl / self.avgdl)
-                scores[doc_id] += idf * (tf * (self.k1 + 1)) / denom
+        df = len(index[term])
+        idf = math.log((N - df + 0.5) / (df + 0.5) + 1)
 
-        return sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        for doc_id, tf in index[term].items():
+            dl = doc_len[doc_id]
+            score = idf * ((tf * (K1 + 1)) / (tf + K1 * (1 - B + B * dl / avgdl)))
+            scores[doc_id] = scores.get(doc_id, 0) + score
+
+    return sorted(scores.items(), key=lambda x: x[1], reverse=True)
+
+if __name__ == "__main__":
+    with open(INDEX_PATH) as f:
+        data = json.load(f)
+
+    query = input("Query: ").lower()
+    results = bm25_score(query, data["index"], data["doc_len"])
+
+    for doc_id, score in results[:10]:
+        print(doc_id, score)
