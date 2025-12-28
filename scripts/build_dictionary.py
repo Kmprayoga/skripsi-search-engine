@@ -2,10 +2,9 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-INDEX_PATH = BASE_DIR / "data/processed/index.json"
-BLOCK_PATH = BASE_DIR / "data/processed/blocks.json"
-FRONT_PATH = BASE_DIR / "data/processed/frontcoded.json"
+INDEX_PATH = Path("data/processed/index.json")
+BLOCK_PATH = Path("data/processed/blocks.json")
+FRONT_PATH = Path("data/processed/frontcoded.json")
 
 def front_code(terms):
     if not terms:
@@ -18,25 +17,18 @@ def front_code(terms):
         prefix = prefix[:i]
     return prefix + "*" + "|".join(t[len(prefix):] for t in terms)
 
-if __name__ == "__main__":
-    with open(INDEX_PATH, "r") as f:
-        index_data = json.load(f)["index"]
+with open(INDEX_PATH) as f:
+    index = json.load(f)["index"]
 
-    terms = sorted(index_data.keys())
-    blocks = defaultdict(list)
+terms = sorted(index.keys())
+blocks = defaultdict(list)
 
-    for t in terms:
-        blocks[t[:3]].append(t)
+for term in terms:
+    blocks[term[:3]].append(term)
 
-    frontcoded = {
-        k: front_code(v)
-        for k, v in blocks.items()
-    }
+frontcoded = {k: front_code(v) for k, v in blocks.items()}
 
-    with open(BLOCK_PATH, "w") as f:
-        json.dump(blocks, f, indent=2)
+json.dump(blocks, open(BLOCK_PATH, "w"), indent=2)
+json.dump(frontcoded, open(FRONT_PATH, "w"), indent=2)
 
-    with open(FRONT_PATH, "w") as f:
-        json.dump(frontcoded, f, indent=2)
-
-    print("[OK] Dictionary built (blocking + front coding)")
+print("[OK] Blocking & front coding built")

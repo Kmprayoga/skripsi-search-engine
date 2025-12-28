@@ -6,10 +6,7 @@ __pycache__/
 # Virtual environment
 venv/
 
-# Data besar / hasil proses
-data/raw/
-data/processed/
-
+*.db
 # OS junk
 .DS_Store
 ._*

@@ -1,65 +1,50 @@
-import pandas as pd
-import re
+import sqlite3
 import json
-from pathlib import Path
+import re
+from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
 
-RAW_DATA_PATH = "data/raw/skripsi.csv"
-OUTPUT_DIR = Path("data/processed")
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+DB_PATH = "db/skripsi.db"
+OUTPUT = "data/processed/corpus.json"
 
-OUTPUT_PATH = OUTPUT_DIR / "corpus.json"
+stemmer = StemmerFactory().create_stemmer()
 
-COLUMNS_USED = [
-    "Title",
-    "Authors",
-    "Advisors",
-    "Keywords",
-    "Abstract",
-    "BAB 1",
-    "BAB 2",
-    "BAB 3",
-    "BAB 4",
-    "BAB 5",
-]
-
-def basic_preprocess(text):
-    if pd.isna(text):
+def preprocess(text):
+    if not text:
         return ""
-    text = str(text).lower()
-    text = re.sub(r"\s+", " ", text)
+    text = text.lower()
     text = re.sub(r"[^a-z0-9 ]", " ", text)
-    return text.strip()
+    text = re.sub(r"\s+", " ", text)
+    return stemmer.stem(text).strip()
 
-def main():
-    df = pd.read_csv(RAW_DATA_PATH)
+conn = sqlite3.connect(DB_PATH)
+cursor = conn.cursor()
 
-    corpus = []
+cursor.execute("SELECT id, title, authors, keywords, abstract FROM skripsi")
 
-    for idx, row in df.iterrows():
-        parts = []
+corpus = []
 
-        for col in COLUMNS_USED:
-            if col in df.columns and pd.notna(row[col]):
-                parts.append(str(row[col]))
+for row in cursor.fetchall():
+    doc_id, title, authors, keywords, abstract = row
 
-        raw_text = " ".join(parts).strip()
-        clean_text = basic_preprocess(raw_text)
+    combined = " ".join([
+        str(title),
+        str(authors),
+        str(keywords),
+        str(abstract),
+    ])
 
-        # skip dokumen kosong
-        if not clean_text:
-            continue
+    clean = preprocess(combined)
+    if not clean:
+        continue
 
-        corpus.append({
-            "doc_id": f"doc_{idx}",
-            "raw_text": raw_text,
-            "clean_text": clean_text
-        })
+    corpus.append({
+        "doc_id": doc_id,
+        "text": clean
+    })
 
-    with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
-        json.dump(corpus, f, ensure_ascii=False, indent=2)
+conn.close()
 
-    print(f"[OK] Corpus built: {len(corpus)} documents")
-    print(f"[OK] Saved to {OUTPUT_PATH}")
+with open(OUTPUT, "w", encoding="utf-8") as f:
+    json.dump(corpus, f, indent=2, ensure_ascii=False)
 
-if __name__ == "__main__":
-    main()
+print(f"[OK] Corpus built: {len(corpus)} docs")
