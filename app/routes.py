@@ -10,17 +10,41 @@ from app.indexer import rebuild_indexes
 from app.search import bm25_search
 from app.config import UPLOAD_DIR
 
+from scripts.spelling import SpellCorrector
+from scripts.wildcard import WildcardExpander
+
 routes = Blueprint("routes", __name__)
 
-@routes.route("/search", methods=["GET"])
+spell_corrector = SpellCorrector(k=3, max_dist=2)
+wildcard_expander = WildcardExpander()
+
+@routes.route("/search", methods=["POST"])
 def search_api():
-    q = request.args.get("q", "").strip()
-    if not q:
+    data = request.get_json(silent=True)
+
+    if not data or "query" not in data:
+        return jsonify({"error": "field 'query' wajib diisi"}), 400
+
+    original_query = data["query"].strip()
+    if not original_query:
         return jsonify({"error": "query kosong"}), 400
 
     start = time.perf_counter()
-    clean_q = preprocess(q)
-    results = bm25_search(clean_q)
+
+    expanded_terms = []
+    for term in original_query.split():
+        expanded_terms.extend(wildcard_expander.expand(term))
+
+    wildcard_query = " ".join(expanded_terms)
+
+    corrected_terms = [
+        spell_corrector.correct(term) for term in expanded_terms
+    ]
+    corrected_query = " ".join(corrected_terms)
+
+    final_query = preprocess(corrected_query)
+
+    results = bm25_search(final_query)
 
     db = get_db()
     cur = db.cursor()
@@ -29,25 +53,32 @@ def search_api():
     for doc_id, score in results:
         cur.execute("""
             SELECT title, authors, publisher, pdf_link
-            FROM skripsi WHERE id=?
+            FROM skripsi
+            WHERE id = ?
         """, (doc_id,))
         row = cur.fetchone()
+
         if row:
             docs.append({
                 "doc_id": doc_id,
                 "title": row["title"],
                 "authors": row["authors"],
                 "publisher": row["publisher"],
-                "pdf": row["pdf_link"],
-                "score": score
+                "pdf_link": row["pdf_link"],
+                "score": round(score, 4)
             })
 
-    elapsed = (time.perf_counter() - start) * 1000
     db.close()
 
+    elapsed = round((time.perf_counter() - start) * 1000, 2)
+
     return jsonify({
-        "query": q,
-        "time_ms": round(elapsed, 2),
+        "original_query": original_query,
+        "wildcard_query": wildcard_query,
+        "corrected_query": corrected_query,
+        "final_query": final_query,
+        "time_ms": elapsed,
+        "total_results": len(docs),
         "results": docs
     })
 
@@ -55,14 +86,21 @@ def search_api():
 def upload_skripsi():
     file = request.files.get("pdf")
     if not file:
-        return jsonify({"error": "PDF wajib"}), 400
+        return jsonify({"error": "file PDF wajib"}), 400
 
-    filename = f"{uuid.uuid4()}.pdf"
+    title = request.form.get("title")
+    authors = request.form.get("authors")
+    publisher = request.form.get("publisher", "")
+
+    if not title or not authors:
+        return jsonify({"error": "title dan authors wajib"}), 400
+
+    filename = f"{uuid.uuid4().hex}.pdf"
     pdf_path = UPLOAD_DIR / filename
     file.save(pdf_path)
 
-    text = extract_pdf_text(str(pdf_path))
-    clean_text = preprocess(text)
+    raw_text = extract_pdf_text(str(pdf_path))
+    clean_text = preprocess(raw_text)
 
     db = get_db()
     cur = db.cursor()
@@ -71,9 +109,9 @@ def upload_skripsi():
         INSERT INTO skripsi (title, authors, publisher, pdf_link, clean_text)
         VALUES (?, ?, ?, ?, ?)
     """, (
-        request.form.get("title"),
-        request.form.get("authors"),
-        request.form.get("publisher"),
+        title,
+        authors,
+        publisher,
         str(pdf_path),
         clean_text
     ))
@@ -81,6 +119,10 @@ def upload_skripsi():
     db.commit()
     db.close()
 
+    # rebuild index
     rebuild_indexes()
 
-    return jsonify({"status": "uploaded & indexed"})
+    return jsonify({
+        "status": "uploaded & indexed",
+        "file": filename
+    }), 201
