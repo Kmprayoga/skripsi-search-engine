@@ -1,5 +1,3 @@
-# scripts/run.py
-
 import time
 import sqlite3
 from pathlib import Path
@@ -9,22 +7,13 @@ from bm25 import bm25_search
 from spelling import SpellCorrector          # berbasis kgram.json
 from wildcard import WildcardExpander        # berbasis blocks.json + frontcoded.json
 
-# =====================
-# PATH CONFIG
-# =====================
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BASE_DIR / "data/skripsi.db"
 
-# =====================
-# INIT COMPONENTS
-# =====================
 stemmer = StemmerFactory().create_stemmer()
 spell = SpellCorrector()
 wildcard = WildcardExpander()
 
-# =====================
-# QUERY PREPROCESS
-# =====================
 def preprocess_query(text: str) -> list[str]:
     """
     Case folding + stemming + tokenisasi
@@ -33,9 +22,6 @@ def preprocess_query(text: str) -> list[str]:
     text = stemmer.stem(text)
     return text.split()
 
-# =====================
-# FETCH DOCUMENTS
-# =====================
 def fetch_documents(doc_ids):
     if not doc_ids:
         return []
@@ -54,13 +40,9 @@ def fetch_documents(doc_ids):
     rows = cur.fetchall()
     conn.close()
 
-    # jaga urutan sesuai ranking BM25
     doc_map = {str(r[0]): r for r in rows}
     return [doc_map[str(d)] for d in doc_ids if str(d) in doc_map]
 
-# =====================
-# MAIN
-# =====================
 if __name__ == "__main__":
     print("=" * 60)
     query = input("Masukkan query pencarian: ").strip()
@@ -78,13 +60,10 @@ if __name__ == "__main__":
     is_corrected = False
 
     for token in tokens:
-        # =====================
-        # WILDCARD MODE
-        # =====================
+
         if "*" in token:
             expanded_terms = wildcard.expand(token)
 
-            # kalau wildcard tidak ketemu apa pun → pakai token asli
             if expanded_terms:
                 final_terms.extend(expanded_terms)
             else:
@@ -93,9 +72,6 @@ if __name__ == "__main__":
             corrected_terms.append(token)
             continue
 
-        # =====================
-        # NORMAL SEARCH MODE
-        # =====================
         corrected = spell.correct(token)
 
         if corrected != token:
@@ -107,23 +83,14 @@ if __name__ == "__main__":
     final_query = " ".join(final_terms)
     corrected_query = " ".join(corrected_terms)
 
-    # =====================
-    # TAMPILKAN SPELL CORRECTION
-    # =====================
     if is_corrected:
         print(f"\nMaksud Anda: {corrected_query} ?\n")
 
-    # =====================
-    # BM25 SEARCH
-    # =====================
     results = bm25_search(final_query, top_k=10)
     doc_ids = [doc_id for doc_id, _ in results]
 
     docs = fetch_documents(doc_ids)
 
-    # =====================
-    # OUTPUT
-    # =====================
     print("\nHASIL PENCARIAN:")
     print("=" * 60)
 
