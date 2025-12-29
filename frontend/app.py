@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 
-API_BASE_URL = "http://127.0.0.1:5000/api"
+API_BASE_URL = "https://6e34360a4a75.ngrok-free.app/api"
 
 st.set_page_config(
     page_title="Search Engine Skripsi",
